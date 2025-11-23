@@ -1,6 +1,19 @@
 
 # 理论知识回顾
 
+Foundry​ 是由 Paradigm 主导开发的以太坊智能合约开发工具链，专为 Solidity 设计，以 纯 Solidity 开发、极速测试、本地化交互​ 为核心优势。其核心组件包括：
+Forge：编译、测试、部署合约的核心工具
+Cast：链上交互命令行工具
+Anvil：本地 EVM 节点模拟器
+Chisel：Solidity REPL 交互环境
+
+相较于传统框架（如 Hardhat/Truffle），Foundry 的独特优势在于：
+纯 Solidity 生态：测试、部署脚本均用 Solidity 编写，无需切换语言
+极速执行：Rust 编写的 EVM 模拟器，测试速度比 Hardhat 快 10-100 倍
+原生工具链：从编译到部署全链路集成，无需依赖 Node.js/JavaScript 生态
+高级调试：支持交易回放、堆栈追踪、Gas 消耗分析
+
+
 # 实践操作
 1.编写合约代码
 
