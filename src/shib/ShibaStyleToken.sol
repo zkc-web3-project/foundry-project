@@ -6,66 +6,111 @@ import "./IUniswapV2Router.sol";
 import "./IUniswapV2Factory.sol";
 
 contract ShibaStyleToken {
+    //代币名
     string public constant name = "ShibaStyleToken";
+    //代币符号
     string public constant symbol = "SST";
+    //代币精度
     uint8 public constant decimals = 18;
+    //代币总量
     uint256 public constant totalSupply = 1_000_000_000 * 10**decimals; // 10亿代币
     
+    //账户余额映射
     mapping(address => uint256) private _balances;
+    //授权映射
     mapping(address => mapping(address => uint256)) private _allowances;
+    //标记哪些地址免除交易费用，为true则表示该地址在进行代币转移时不收取任何税费
     mapping(address => bool) public isExcludedFromFee;
+    //标记哪些地址免受交易限制约束
     mapping(address => bool) public isExcludedFromLimit;
+    //记录每个地址的最后交易时间
     mapping(address => uint256) public lastTradeTime;
+    //记录每个地址的每天交易金额
     mapping(address => uint256) public dailyTradedAmount;
-    
-    address public owner;
-    address public taxWallet;
-    address public liquidityWallet;
-    address public uniswapPair;
 
+    //合约所有者地址
+    address public owner;
+    //税费收入的接受钱包地址(接收交易税费收益)
+    address public taxWallet;
+    //流动性资金的接收钱包地址(接收流动性资金)
+    address public liquidityWallet;
+    //uniswap交易对合约地址
+    address public uniswapPair;
+    
+    //uniswap V2 路由器接口实例    sepolia-0xeE567Fe1712Faf6149d80dA1E6934E354124CfE3
     IUniswapV2Router public uniswapRouter;
     
+    //买入税率
     uint256 public buyTax = 300; // 3%
+    //卖出税率
     uint256 public sellTax = 500; // 5%
+    //转账税率
     uint256 public transferTax = 100; // 1%
     
+    //单笔交易的最大金额限制
     uint256 public maxTxAmount = totalSupply / 100; // 总量的1%
+    //单日累计交易金额的最大限制
     uint256 public maxDailyAmount = totalSupply / 50; // 总量的2%
+    //连续交易的最小间隔时间
     uint256 public tradeCooldown = 30 minutes; // 交易冷却时间
     
+    //累计收益的税费总额(达到阈值时自动分配)
     uint256 private taxCollected;
+    //标记是否正在进行swap操作，用于防止重入攻击
     bool private inSwap;
     
+    //普通转账事件
     event Transfer(address indexed from, address indexed to, uint256 value);
+    //授权事件
     event Approval(address indexed owner, address indexed spender, uint256 value);
+    /** 
+      税费分配事件
+      liquidityAmount: 流动性adding的代币数量
+      taxWalletAmount: 发送到税务钱包的代币数量
+     */
     event TaxesDistributed(uint256 liquidityAmount, uint256 taxWalletAmount);
+
+    /** 
+      流动性添加事件
+      tokenAmount: 添加到流动性池的代币数量
+      ethAmount: 添加到流动性池的ETH数量
+      liquidity: 生成的流动性代币数量
+     */
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount, uint256 liquidity);
     
+    //修饰符号，只有创建者可以调用
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner can call this function");
         _;
     }
     
+    //修饰符，在函数执行期间锁定swap操作，防止重入攻击
     modifier lockTheSwap() {
         inSwap = true;
         _;
         inSwap = false;
     }
     
+    //构造函数，创建代币并初始化参数
     constructor(address _router) {
         owner = msg.sender;
         taxWallet = msg.sender;
         liquidityWallet = msg.sender;
         
+        //将全部代币余额分配给部署者
         _balances[msg.sender] = totalSupply;
+        //从零地址创建代币给部署者
         emit Transfer(address(0), msg.sender, totalSupply);
         
+        //传入uniswap 路由器地址
         uniswapRouter = IUniswapV2Router(_router);
+        //通过路由器获取工厂合约地址并创建本代币与ETH的代币对
         uniswapPair = IUniswapV2Factory(uniswapRouter.factory()).createPair(
-            address(this),
-            uniswapRouter.WETH()
+            address(this), //当前代币SST
+            uniswapRouter.WETH() //ETH代币
         );
         
+        //以下为部署这的特权，免手续费、交易限制等
         isExcludedFromFee[owner] = true;
         isExcludedFromFee[address(this)] = true;
         isExcludedFromFee[taxWallet] = true;
@@ -73,31 +118,38 @@ contract ShibaStyleToken {
         isExcludedFromLimit[owner] = true;
         isExcludedFromLimit[address(this)] = true;
     }
-    
+
+    //获取账户余额
     function balanceOf(address account) public view returns (uint256) {
         return _balances[account];
     }
     
+    //代币转账
     function transfer(address recipient, uint256 amount) public returns (bool) {
         _transfer(msg.sender, recipient, amount);
         return true;
     }
     
+    //授权转账
     function transferFrom(address sender, address recipient, uint256 amount) public returns (bool) {
         _transfer(sender, recipient, amount);
+        //减少sender对调用者的授权额度，更新授权额度映射关系，这里的sender是代币的拥有者
         _approve(sender, msg.sender, _allowances[sender][msg.sender] - amount);
         return true;
     }
     
+    //授权
     function approve(address spender, uint256 amount) public returns (bool) {
         _approve(msg.sender, spender, amount);
         return true;
     }
     
+    //查询授权额度
     function allowance(address _owner, address spender) public view returns (uint256) {
         return _allowances[_owner][spender];
     }
     
+    //内部转账函数
     function _transfer(address sender, address recipient, uint256 amount) internal {
         require(sender != address(0), "Transfer from zero address");
         require(recipient != address(0), "Transfer to zero address");
@@ -132,6 +184,7 @@ contract ShibaStyleToken {
                 
                 // 自动执行流动性添加和税费分配
                 if (!inSwap && taxCollected > totalSupply / 1000) { // 当税费积累到总量的0.1%时执行
+                    //执行税费分配
                     _distributeTaxes();
                 }
             } else { // 普通转账
@@ -139,16 +192,21 @@ contract ShibaStyleToken {
             }
             
             if (taxAmount > 0) {
+                //如果有税费产生，则计算实际转账金额(原金额-税额)
                 transferAmount = amount - taxAmount;
+                //将税费添加到合约地址的余额中
                 _balances[address(this)] += taxAmount;
+                //累计税费
                 taxCollected += taxAmount;
+                //触发转账事件(税费转账到当前合约)
                 emit Transfer(sender, address(this), taxAmount);
             }
         }
-        
+        //更新转账方余额
         _balances[sender] -= amount;
+        //更新接收方余额
         _balances[recipient] += transferAmount;
-        
+        //触发转账事件(实际转账)
         emit Transfer(sender, recipient, transferAmount);
     }
     
