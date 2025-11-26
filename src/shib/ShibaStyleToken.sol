@@ -177,6 +177,9 @@ contract ShibaStyleToken {
         
         // 只在买卖交易时收税，排除特定地址
         if (!isExcludedFromFee[sender] && !isExcludedFromFee[recipient]) {
+            //所有DEX交易都必须经过uniswapPair合约，只要sender或recipient是这个地址，就可确定是DEX交易
+            //买入：sender 是 uniswapPair → 代币从 DEX 发出
+            //卖出：recipient 是 uniswapPair → 代币进入 DEX
             if (sender == uniswapPair) { // 购买交易
                 taxAmount = (amount * buyTax) / 10000;
             } else if (recipient == uniswapPair) { // 出售交易
@@ -210,17 +213,22 @@ contract ShibaStyleToken {
         emit Transfer(sender, recipient, transferAmount);
     }
     
+    //执行税费分配(当达到代币总供应量的0.1%时执行)
     function _distributeTaxes() internal lockTheSwap {
         uint256 totalTax = taxCollected;
         if (totalTax == 0) return;
         
-        // 50% 的税费添加到流动性池
+        // 50% 的税费添加到流动性池(一半用于增加流动性，一半作为项目方收益)
         uint256 liquidityAmount = totalTax / 2;
+        // 50% 的税费发送到税费钱包 即项目方收益
         uint256 taxWalletAmount = totalTax - liquidityAmount;
         
         // 交换代币为 ETH 用于添加流动性
+        //调用前合约的余额
         uint256 initialETHBalance = address(this).balance;
+        //使用liquidityAmount数量的SST通过uniswap路由器兑换为ETH
         _swapTokensForETH(liquidityAmount);
+        //计算出此次兑换获得的ETH数量(新余额-初始余额)
         uint256 newETHBalance = address(this).balance - initialETHBalance;
         
         // 添加流动性
@@ -228,28 +236,32 @@ contract ShibaStyleToken {
             _addLiquidity(liquidityAmount, newETHBalance);
         }
         
-        // 剩余 ETH 发送到税费钱包
+        // 剩余 ETH 发送到税费钱包(可能由于滑点导致还有剩余的ETH)
         if (address(this).balance > initialETHBalance) {
             payable(taxWallet).transfer(address(this).balance - initialETHBalance);
         }
-        
+        //重置税费累计
         taxCollected = 0;
+        //触发税费分配事件
         emit TaxesDistributed(liquidityAmount, taxWalletAmount);
     }
     
+    //使用代币(SST)兑换ETH
     function _swapTokensForETH(uint256 tokenAmount) internal {
+        //指定代币交换路径[BTC,ETH] ,在uniswapRouter v2中，表示从BTC兑换为ETH,Uniswap V2 使用 WETH（而不是原生 ETH）进行交易,所以需先将ETH包装成WETH
         address[] memory path = new address[](2);
         path[0] = address(this);
         path[1] = uniswapRouter.WETH();
         
+        //需提前授权才能执行swap操作
         _approve(address(this), address(uniswapRouter), tokenAmount);
         
         uniswapRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
-            tokenAmount,
-            0,
-            path,
-            address(this),
-            block.timestamp
+            tokenAmount, //代币数量
+            0,  //最小输出 ETH 数量（0 表示无最低要求）
+            path, //交易路径 [SST, WETH]
+            address(this), //收益接收地址
+            block.timestamp //交易截止时间（防止过期）
         );
     }
     
