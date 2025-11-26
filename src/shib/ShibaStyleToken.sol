@@ -265,18 +265,20 @@ contract ShibaStyleToken {
         );
     }
     
+    //添加流动性
     function _addLiquidity(uint256 tokenAmount, uint256 ethAmount) internal {
+        //授权uniswapRouter代表当前合约转移代币
         _approve(address(this), address(uniswapRouter), tokenAmount);
         
-        uniswapRouter.addLiquidityETH{value: ethAmount}(
+        uniswapRouter.addLiquidityETH{value: ethAmount}( //附带的 ETH 数量（自动转换为 WETH）
             address(this),
             tokenAmount,
-            0,
-            0,
-            liquidityWallet,
-            block.timestamp
+            0, //最小代币数量（设置为 0 表示无最低要求）
+            0, //最小 ETH 数量（设置为 0 表示无最低要求）
+            liquidityWallet, //流动性接收地址，即项目方钱包
+            block.timestamp //交易截止时间（防止过期）
         );
-        
+        //触发流动性添加事件
         emit LiquidityAdded(tokenAmount, ethAmount, 0);
     }
     
@@ -314,13 +316,17 @@ contract ShibaStyleToken {
     function excludeAddress(address account, bool fromFee, bool fromLimit) external onlyOwner {
         if (fromFee) {
             isExcludedFromFee[account] = true;
+        }else{
+            isExcludedFromLimit[account] = false;
         }
         if (fromLimit) {
             isExcludedFromLimit[account] = true;
+        }else{
+            isExcludedFromFee[account] = false;
         }
     }
     
-    // 提取意外发送的 ETH
+    // 提取意外发送的 ETH(用户误操作发送的ETH或者交易失败滞留的ETH)
     function withdrawStuckETH() external onlyOwner {
         payable(owner).transfer(address(this).balance);
     }
