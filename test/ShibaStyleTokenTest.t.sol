@@ -3,28 +3,27 @@ pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 import "../src/shib/ShibaStyleToken.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
+import "../src/shib/MockERC20.sol";
 contract ShibaStyleTokenTest is Test {
-    ShibaStyleToken public token;
+     ShibaStyleToken public token;
     address public owner;
     address public user1;
     address public user2;
-    MockERC20 public mockToken;
+    // 修改为 StdCheats 提供的 TestERC20 类型（如果存在）
+    // 或者直接使用 IERC20 接口并配合部署一个 Mock ERC20 合约
+    MockERC20 public mockToken; 
 
     function setUp() public {
-        //设置随机测试地址
         owner = makeAddr("owner");
         user1 = makeAddr("user1");
         user2 = makeAddr("user2");
 
         // Deploy ShibaStyleToken
-        token = new ShibaStyleToken{value: 0}(0x0000000000000000000000000000000000000000); // 虚拟路由器地址
+        token = new ShibaStyleToken(0xeE567Fe1712Faf6149d80dA1E6934E354124CfE3);
 
-        // Deploy MTKSI ERC20 token
-        mockToken = new ERC20("MTKSI", "MTK-SI", 18);  //模拟意外发送其他代币的情形
-        vm.prank(owner); //模拟 owner 地址执行后续操作,所有后续调用将被视为由 owner 发起。
-        mockToken.mint(address(this), 1000 ether);
+         // 使用自定义 MockERC20 替代 TestERC20
+        mockToken = new MockERC20("Mock Token", "MTK", 18);
+        mockToken.mint(address(this), 1000 ether); // 初始铸造给测试账户
     }
 
     // ✅ 1. Constructor Test
